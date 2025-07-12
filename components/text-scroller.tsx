@@ -74,7 +74,7 @@ export function TextScroller({
       // Corrected: yPercent: 100 means the top of the element is at the bottom of the parent.
       // Combined with top: "50%" and yPercent: -50 for the animation, it will slide up to center.
       gsap.set(snippetEl, {
-        yPercent: 100, // Start with the top of the element at the bottom of the viewport
+        yPercent: 100, // Corrected: Start with the top of the element at the bottom of the viewport
         opacity: 0,
         position: "absolute",
         top: "50%", // This is the reference point for yPercent
