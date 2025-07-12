@@ -14,29 +14,24 @@ interface Snippet {
 }
 
 interface TextScrollerProps {
-  snippets: Snippet[]
-  // This prop defines how much scroll distance each snippet's full transition (in and out) occupies.
-  // A value of 1 means each snippet's animation spans 1 viewport height.
-  // A value less than 1 (e.g., 0.75) means faster transitions, more overlap.
-  // A value greater than 1 (e.g., 1.2) means slower transitions, more "pause" in between.
-  snippetTransitionScrollFactor?: number
-  onSnippetPositionUpdate?: (id: string, x: number, y: number, isVisible: boolean) => void // New prop
+  snippets: Snippet[] // Changed to expect an array of Snippet objects
+  // This defines the scroll distance (in pixels) that each snippet "pins" for.
+  // Higher value means it stays centered for longer while user scrolls.
+  pauseDurationScrollDistance?: number
 }
 
-export function TextScroller({
-  snippets,
-  snippetTransitionScrollFactor = 1,
-  onSnippetPositionUpdate,
-}: TextScrollerProps) {
+export function TextScroller({ snippets, pauseDurationScrollDistance = 500 }: TextScrollerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const snippetRefs = useRef<(HTMLDivElement | null)[]>([])
-  let totalScrollHeight: number // Declare the variable here
 
   useEffect(() => {
     if (!containerRef.current || snippets.length === 0) return
 
-    // Clear any existing ScrollTriggers to prevent duplicates on re-renders
+    // Kill existing ScrollTriggers to prevent duplicates on re-renders
     ScrollTrigger.getAll().forEach((trigger) => trigger.kill())
+
+    // Detect if running inside an iframe (like v0 preview)
+    const isInsideIframe = typeof window !== "undefined" && window.self !== window.top
 
     // Set the scroller for all ScrollTriggers created within this useEffect
     ScrollTrigger.defaults({
@@ -44,25 +39,25 @@ export function TextScroller({
     })
 
     const totalSnippets = snippets.length
-    const viewportHeight = window.innerHeight
 
-    // Define how much scroll distance each snippet's full cycle (enter, pause, exit) takes.
-    // This is the "slot" size for each snippet on the timeline.
-    const singleSnippetScrollSlot = viewportHeight * snippetTransitionScrollFactor
+    // Calculate total scroll height needed for the animation
+    // If pinning is disabled, the scroll height is just the sum of snippet heights + some buffer
+    // If pinning is enabled, it's the sum of (viewport height + pause distance) for each snippet
+    const totalScrollHeight = isInsideIframe
+      ? totalSnippets * window.innerHeight * 0.75 // Less height needed if not pinning
+      : totalSnippets * (window.innerHeight + pauseDurationScrollDistance) + 0.5 * window.innerHeight
 
-    // The total scroll height needed for the entire sequence.
-    // Each snippet needs one 'singleSnippetScrollSlot' to complete its cycle.
-    // Add an extra viewportHeight at the end to ensure the very last snippet fully exits.
-    totalScrollHeight = totalSnippets * singleSnippetScrollSlot + viewportHeight
-
+    // Create a master timeline that sequences snippet animations
     const masterTl = gsap.timeline({
       scrollTrigger: {
         trigger: containerRef.current,
         start: "top top",
         end: `+=${totalScrollHeight}`,
         scrub: 1,
-        pin: false,
-        markers: false,
+        // Disable pinning if inside an iframe to avoid SecurityError
+        pin: !isInsideIframe,
+        pinType: "fixed", // This will only apply if pin is true
+        markers: false, // Set to true for debugging scroll positions
       },
     })
 
@@ -70,83 +65,58 @@ export function TextScroller({
       const snippetEl = snippetRefs.current[i]
       if (!snippetEl) return
 
-      // Initial state: hidden below the viewport, centered horizontally
-      // Corrected: yPercent: 100 means the top of the element is at the bottom of the parent.
-      // Combined with top: "50%" and yPercent: -50 for the animation, it will slide up to center.
+      // Initial state: Hidden below the viewport, centered horizontally
       gsap.set(snippetEl, {
-        yPercent: 100, // Corrected: Start with the top of the element at the bottom of the viewport
+        yPercent: 100,
         opacity: 0,
         position: "absolute",
-        top: "50%", // This is the reference point for yPercent
+        top: "50%",
         left: "50%",
-        xPercent: -50, // Center horizontally
-        width: "90%", // Keep width consistent
-        zIndex: totalSnippets - i, // Ensure correct stacking order (earlier snippets on top)
+        xPercent: -50,
+        yPercent: -50,
+        width: "90%",
+        zIndex: totalSnippets - i,
       })
 
-      // Calculate timeline positions for this snippet's phases within its slot
-      const entryPoint = i * singleSnippetScrollSlot // Start of this snippet's slot
-      const pausePoint = entryPoint + singleSnippetScrollSlot / 3 // After 1/3 of its slot, it's fully in
-      const exitPoint = entryPoint + (2 * singleSnippetScrollSlot) / 3 // After 2/3 of its slot, it starts exiting
+      // Calculate timeline position based on whether pinning is active
+      const timelinePosition = isInsideIframe
+        ? i * ((window.innerHeight * 0.75) / window.innerHeight) // Simpler progression if no pinning
+        : i * (1 + pauseDurationScrollDistance / window.innerHeight)
 
-      const phaseDuration = singleSnippetScrollSlot / 3 // Duration for each phase (entry, pause, exit)
-
-      // 1. Slide in from bottom (yPercent: 100) to center (yPercent: -50)
-      masterTl.to(
-        snippetEl,
-        {
-          yPercent: -50, // Target: center of element at 50% from top
-          opacity: 1,
-          duration: phaseDuration,
-        },
-        entryPoint, // Start at the beginning of its slot
-      )
-
-      // 2. Slide out from center (yPercent: -50) to top (yPercent: -200)
-      masterTl.to(
-        snippetEl,
-        {
-          yPercent: -200, // Ensure it goes completely off-screen above
-          opacity: 0,
-          duration: phaseDuration,
-        },
-        exitPoint, // Start after the entry and pause phases
-      )
+      masterTl
+        .to(snippetEl, { yPercent: 0, opacity: 1, duration: 1 }, timelinePosition) // Slide in to center
+        .to(
+          snippetEl,
+          {
+            yPercent: 0,
+            opacity: 1,
+            duration: isInsideIframe ? 0.5 : pauseDurationScrollDistance / window.innerHeight,
+          }, // Shorter "hold" if not pinning
+          timelinePosition + 1,
+        )
+        .to(
+          snippetEl,
+          { yPercent: -100, opacity: 0, duration: 1 },
+          timelinePosition + 1 + (isInsideIframe ? 0.5 : pauseDurationScrollDistance / window.innerHeight),
+        )
     })
 
-    // --- Debugging: Real-time position tracking ---
-    const updateSnippetPositions = () => {
-      snippetRefs.current.forEach((snippetEl, i) => {
-        if (snippetEl && onSnippetPositionUpdate && snippets[i]) {
-          const rect = snippetEl.getBoundingClientRect()
-          const viewportWidth = window.innerWidth
-          const viewportHeight = window.innerHeight
-
-          // Check if any part of the snippet is within the viewport
-          const isVisible = rect.bottom > 0 && rect.top < viewportHeight && rect.right > 0 && rect.left < viewportWidth
-
-          // Get center x and y relative to the viewport
-          const centerX = rect.left + rect.width / 2
-          const centerY = rect.top + rect.height / 2
-
-          // Pass 0,0 if not visible, otherwise actual center coordinates
-          onSnippetPositionUpdate(snippets[i].id, isVisible ? centerX : 0, isVisible ? centerY : 0, isVisible)
-        }
-      })
-    }
-
-    gsap.ticker.add(updateSnippetPositions) // Add to GSAP's ticker for continuous updates
-
-    // Clean up ScrollTriggers and ticker on unmount
+    // Clean up ScrollTriggers on unmount
     return () => {
       masterTl.kill()
       ScrollTrigger.getAll().forEach((trigger) => trigger.kill())
-      gsap.ticker.remove(updateSnippetPositions) // Remove from GSAP's ticker
     }
-  }, [snippets, snippetTransitionScrollFactor, onSnippetPositionUpdate]) // Add onSnippetPositionUpdate to dependencies
+  }, [snippets, pauseDurationScrollDistance])
 
-  // The dummy scroll height must match the 'end' value of the ScrollTrigger
-  const finalDummyScrollHeight = totalScrollHeight
+  // Create a dummy div to provide scrollable height within the container
+  // This is crucial because `pin: true` on the container (when active) prevents its children from
+  // naturally creating scroll height. The master timeline then maps this dummy scroll
+  // height to the snippet animations.
+  const dummyScrollHeight =
+    snippets.length *
+      (window.innerHeight +
+        (typeof window !== "undefined" && window.self !== window.top ? 0 : pauseDurationScrollDistance)) +
+    window.innerHeight * 0.5
 
   return (
     <div className="relative w-full h-full overflow-hidden">
@@ -155,18 +125,18 @@ export function TextScroller({
         className="relative w-full h-full"
         style={{ overflowY: "scroll", WebkitOverflowScrolling: "touch" }}
       >
-        <div style={{ height: `${finalDummyScrollHeight}px` }} aria-hidden="true" />
+        <div style={{ height: `${dummyScrollHeight}px` }} aria-hidden="true" />
 
         {snippets.map((snippet, i) => (
           <div
-            key={snippet.id}
+            key={snippet.id} // Use snippet.id for key
             ref={(el) => (snippetRefs.current[i] = el)}
             className="text-center text-3xl font-bold text-gray-200"
             style={{
               pointerEvents: "none",
             }}
           >
-            {snippet.content}
+            {snippet.content} {/* Render snippet content */}
           </div>
         ))}
       </div>

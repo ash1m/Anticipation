@@ -10,19 +10,11 @@ interface Snippet {
   content: string
 }
 
-// Define type for snippet position data
-interface SnippetPosition {
-  x: number
-  y: number
-  isVisible: boolean
-}
-
 interface SortableSnippetListProps {
   snippets: Snippet[]
   onUpdateSnippet: (id: string, newContent: string) => void
   onDeleteSnippet: (id: string) => void
   onReorderSnippets: (newOrder: Snippet[]) => void
-  snippetPositions: Record<string, SnippetPosition> // New prop
 }
 
 export function SortableSnippetList({
@@ -30,7 +22,6 @@ export function SortableSnippetList({
   onUpdateSnippet,
   onDeleteSnippet,
   onReorderSnippets,
-  snippetPositions, // Destructure new prop
 }: SortableSnippetListProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -62,21 +53,15 @@ export function SortableSnippetList({
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
       <SortableContext items={snippets.map((s) => s.id)} strategy={verticalListSortingStrategy}>
         <div className="flex flex-col gap-2">
-          {snippets.map((snippet) => {
-            const pos = snippetPositions[snippet.id] || { x: 0, y: 0, isVisible: false } // Get position or default
-            return (
-              <SnippetEditor
-                key={snippet.id}
-                id={snippet.id}
-                content={snippet.content}
-                onContentChange={onUpdateSnippet}
-                onDelete={onDeleteSnippet}
-                x={pos.x} // Pass x
-                y={pos.y} // Pass y
-                isVisible={pos.isVisible} // Pass isVisible
-              />
-            )
-          })}
+          {snippets.map((snippet) => (
+            <SnippetEditor
+              key={snippet.id}
+              id={snippet.id}
+              content={snippet.content}
+              onContentChange={onUpdateSnippet}
+              onDelete={onDeleteSnippet}
+            />
+          ))}
         </div>
       </SortableContext>
     </DndContext>

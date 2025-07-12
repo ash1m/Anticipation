@@ -10,7 +10,6 @@ import { TextScroller } from "@/components/text-scroller"
 import { Button } from "@/components/ui/button"
 import { PlusIcon } from "lucide-react"
 import { SortableSnippetList } from "@/components/sortable-snippet-list"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { Vector3Tuple } from "@react-three/fiber"
 
 // Define the type for spiral properties
@@ -32,13 +31,6 @@ interface SpiralProps {
 interface Snippet {
   id: string
   content: string
-}
-
-// Define type for snippet position data
-interface SnippetPosition {
-  x: number
-  y: number
-  isVisible: boolean
 }
 
 // Default properties for a single spiral, increased by 200% (doubled) from previous values
@@ -119,9 +111,6 @@ export default function Home() {
     ]
   })
 
-  // New state for real-time snippet positions
-  const [snippetPositions, setSnippetPositions] = useState<Record<string, SnippetPosition>>({})
-
   // Effect to save table data to localStorage whenever it changes
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -191,14 +180,6 @@ export default function Home() {
     setSnippets(newOrder)
   }, [])
 
-  // Callback for TextScroller to update snippet positions
-  const handleSnippetPositionUpdate = useCallback((id: string, x: number, y: number, isVisible: boolean) => {
-    setSnippetPositions((prev) => ({
-      ...prev,
-      [id]: { x, y, isVisible },
-    }))
-  }, [])
-
   // Helper function to render a slider control
   const renderSlider = useCallback(
     (label: string, propName: keyof SpiralProps, min: number, max: number, step: number) => {
@@ -228,89 +209,81 @@ export default function Home() {
     <div className="flex h-screen w-full bg-gray-900 text-white">
       {/* Sliders Sidebar */}
       <div className="flex w-[250px] flex-col gap-6 border-r border-gray-700 bg-gray-800 p-6 overflow-y-auto">
-        <h2 className="text-xl font-bold mb-4">Settings</h2>
-        <Tabs defaultValue="spiral-controls" className="flex flex-col flex-1">
-          <TabsList className="grid w-full grid-cols-2 mb-4">
-            <TabsTrigger value="spiral-controls">Spiral</TabsTrigger>
-            <TabsTrigger value="text-snippets">Snippets</TabsTrigger>
-          </TabsList>
-          <TabsContent value="spiral-controls" className="flex flex-col gap-6 overflow-y-auto pr-2">
-            {/* Dropdown to select spiral (only one now, but kept for consistency if more are added later) */}
-            {NUM_SPIRALS > 1 && (
-              <div className="grid gap-2">
-                <Label htmlFor="select-spiral">Select Spiral</Label>
-                <Select
-                  value={String(selectedSpiralIndex)}
-                  onValueChange={(value) => setSelectedSpiralIndex(Number(value))}
-                >
-                  <SelectTrigger id="select-spiral" className="w-[200px]">
-                    <SelectValue placeholder="Select a spiral" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.from({ length: NUM_SPIRALS }).map((_, i) => (
-                      <SelectItem key={i} value={String(i)}>
-                        Spiral {i + 1}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            {/* Real-time position display */}
-            <div className="grid gap-2 p-3 bg-gray-700 rounded">
-              <Label className="font-extralight text-xs">Camera Position </Label>
-              <div className="text-xs font-mono text-green-400">
-                X: {cameraPositions[selectedSpiralIndex][0].toFixed(2)}
-              </div>
-              <div className="text-xs font-mono text-green-400">
-                Y: {cameraPositions[selectedSpiralIndex][1].toFixed(2)}
-              </div>
-              <div className="text-xs font-mono text-green-400">
-                Z: {cameraPositions[selectedSpiralIndex][2].toFixed(2)}
-              </div>
-            </div>
-            {/* Sliders for the selected spiral */}
-            {renderSlider("Radius", "radius", 0.1, 5, 0.01)}
-            {renderSlider("Turns", "turns", 1, 20, 1)}
-            {renderSlider("Height", "height", 0.01, 10, 0.01)}
-            {renderSlider("Frequency", "frequency", 0.1, 10, 0.1)}
-            {renderSlider("Amplitude", "amplitude", 0, 2, 0.01)}
-            {renderSlider("Rotation Speed", "speed", 0, 5, 0.1)}
-            {renderSlider("Line Width", "lineWidth", 1, 10, 1)}
-            {renderSlider("Loop Time (s)", "loopTime", 0.1, 20, 0.1)}
-            {/* Control for ball easing */}
-            <div className="flex items-center justify-between gap-2">
-              <Label className="font-extralight tracking-normal text-xs" htmlFor="ball-easing">
-                Enable Ball Easing
-              </Label>
-              <Switch
-                id="ball-easing"
-                checked={spiralsConfig[selectedSpiralIndex].enableBallEasing}
-                onCheckedChange={(checked) => handleSliderChange("enableBallEasing", [checked ? 1 : 0])}
-              />
-            </div>
-            {/* New switch for camera type */}
-            <div className="flex items-center justify-between gap-2">
-              <Label className="font-extralight tracking-normal text-xs" htmlFor="camera-type">
-                Orthographic Camera
-              </Label>
-              <Switch id="camera-type" checked={isOrthographic} onCheckedChange={setIsOrthographic} />
-            </div>
-          </TabsContent>
-          <TabsContent value="text-snippets" className="flex flex-col gap-4 overflow-y-auto pr-2">
-            <h3 className="text-lg font-bold sr-only">Text Snippets</h3>
-            <Button onClick={handleAddSnippet} className="w-full">
-              <PlusIcon className="mr-2 h-4 w-4" /> Add New Snippet
-            </Button>
-            <SortableSnippetList
-              snippets={snippets}
-              onUpdateSnippet={handleUpdateSnippet}
-              onDeleteSnippet={handleDeleteSnippet}
-              onReorderSnippets={handleReorderSnippets}
-              snippetPositions={snippetPositions} // Pass snippet positions
-            />
-          </TabsContent>
-        </Tabs>
+        <h2 className="text-xl font-bold">Spiral Controls</h2>
+        {/* Dropdown to select spiral (only one now, but kept for consistency if more are added later) */}
+        {NUM_SPIRALS > 1 && (
+          <div className="grid gap-2">
+            <Label htmlFor="select-spiral">Select Spiral</Label>
+            <Select
+              value={String(selectedSpiralIndex)}
+              onValueChange={(value) => setSelectedSpiralIndex(Number(value))}
+            >
+              <SelectTrigger id="select-spiral" className="w-[200px]">
+                <SelectValue placeholder="Select a spiral" />
+              </SelectTrigger>
+              <SelectContent>
+                {Array.from({ length: NUM_SPIRALS }).map((_, i) => (
+                  <SelectItem key={i} value={String(i)}>
+                    Spiral {i + 1}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        {/* Real-time position display */}
+        <div className="grid gap-2 p-3 bg-gray-700 rounded">
+          <Label className="font-extralight text-xs">Camera Position </Label>
+          <div className="text-xs font-mono text-green-400">
+            X: {cameraPositions[selectedSpiralIndex][0].toFixed(2)}
+          </div>
+          <div className="text-xs font-mono text-green-400">
+            Y: {cameraPositions[selectedSpiralIndex][1].toFixed(2)}
+          </div>
+          <div className="text-xs font-mono text-green-400">
+            Z: {cameraPositions[selectedSpiralIndex][2].toFixed(2)}
+          </div>
+        </div>
+        {/* Sliders for the selected spiral */}
+        {renderSlider("Radius", "radius", 0.1, 5, 0.01)}
+        {renderSlider("Turns", "turns", 1, 20, 1)}
+        {renderSlider("Height", "height", 0.01, 10, 0.01)}
+        {renderSlider("Frequency", "frequency", 0.1, 10, 0.1)}
+        {renderSlider("Amplitude", "amplitude", 0, 2, 0.01)}
+        {renderSlider("Rotation Speed", "speed", 0, 5, 0.1)}
+        {renderSlider("Line Width", "lineWidth", 1, 10, 1)}
+        {renderSlider("Loop Time (s)", "loopTime", 0.1, 20, 0.1)}
+        {/* Control for ball easing */}
+        <div className="flex items-center justify-between gap-2">
+          <Label className="font-extralight tracking-normal text-xs" htmlFor="ball-easing">
+            Enable Ball Easing
+          </Label>
+          <Switch
+            id="ball-easing"
+            checked={spiralsConfig[selectedSpiralIndex].enableBallEasing}
+            onCheckedChange={(checked) => handleSliderChange("enableBallEasing", [checked ? 1 : 0])}
+          />
+        </div>
+        {/* New switch for camera type */}
+        <div className="flex items-center justify-between gap-2">
+          <Label className="font-extralight tracking-normal text-xs" htmlFor="camera-type">
+            Orthographic Camera
+          </Label>
+          <Switch id="camera-type" checked={isOrthographic} onCheckedChange={setIsOrthographic} />
+        </div>
+        {/* Snippet Management Section */}
+        <div className="mt-6 pt-6 border-t border-gray-700">
+          <h3 className="text-lg font-bold mb-4">Text Snippets</h3>
+          <Button onClick={handleAddSnippet} className="w-full mb-4">
+            <PlusIcon className="mr-2 h-4 w-4" /> Add New Snippet
+          </Button>
+          <SortableSnippetList
+            snippets={snippets}
+            onUpdateSnippet={handleUpdateSnippet}
+            onDeleteSnippet={handleDeleteSnippet}
+            onReorderSnippets={handleReorderSnippets}
+          />
+        </div>
       </div>
 
       {/* Main content area: Two columns */}
@@ -332,11 +305,8 @@ export default function Home() {
 
         {/* Right Column: Text Scroller (50% width) */}
         <div className="w-1/2 relative h-full flex items-center justify-center bg-gray-800 border-l border-gray-700">
-          <TextScroller
-            snippets={snippets}
-            snippetTransitionScrollFactor={1}
-            onSnippetPositionUpdate={handleSnippetPositionUpdate} // Pass the update callback
-          />
+          {/* Pass the full snippets array directly */}
+          <TextScroller snippets={snippets} pauseDurationScrollDistance={500} />
         </div>
       </div>
     </div>
